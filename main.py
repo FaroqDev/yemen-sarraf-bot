@@ -31,9 +31,7 @@ def get_market_rates():
     
     # قائمة مصادر (إذا فشل الأول نجرب الثاني)
     sources = [
-        "https://economiyemen.net/",
-        "https://yemen-exchange.com/",
-        "https://www.2dec.net/rate.html",
+        #"https://www.2dec.net/rate.html",
         "http://yemenief.org/Currency.aspx",
         "https://ydn.news/"
     ]
