@@ -72,13 +72,13 @@ NEW_ADEN_USD = 1680
 
 # حساب الذهب بناءً على هذه الأسعار
 gold_data = calculate_gold_updates(NEW_SANAA_USD, NEW_ADEN_USD)
+ # حساب توقيت اليمن (UTC + 3)
+yemen_time = datetime.utcnow() + timedelta(hours=3)
+formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
 
 if gold_data:
     # تجهيز البيانات للإرسال
-    # حساب توقيت اليمن (UTC + 3)
-    yemen_time = datetime.utcnow() + timedelta(hours=3)
-    formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
-
+   
     updates = {
         "rates/sanaa/usd_buy": NEW_SANAA_USD,
         "rates/sanaa/usd_sell": NEW_SANAA_USD + 5, 
