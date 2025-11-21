@@ -1,2 +1,4 @@
 firebase-admin
 yfinance
+requests
+beautifulsoup4
