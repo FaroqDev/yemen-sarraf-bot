@@ -24,16 +24,14 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred, {'databaseURL': DATABASE_URL})
 
 # ==========================================
-# 2. 🕷️ دالة سحب الأسعار (الذكية)
+# 2. 🕷️ دالة سحب الأسعار (مع فلتر السنوات القوي)
 # ==========================================
 def get_market_rates():
     print("🕷️ بدء عملية السحب...")
     
-    # قائمة مصادر قوية
     sources = [
-        #"https://ydn.news",
-        "https://www.2dec.net/rate.html", # المصدر الذي نجح معك
-        "https://economiyemen.net/",
+        "https://ydn.news", # موقع يمن ديلي نيوز (غالباً دقيق)
+        "https://www.2dec.net/rate.html",
         "https://yemen-exchange.com/"
     ]
     
@@ -46,39 +44,40 @@ def get_market_rates():
         "aden": {"usd": 1660, "sar": 435}
     }
     
-    current_year = datetime.now().year # 2025
+    # 🚫 القائمة السوداء: أي رقم يشبه هذه السنوات سيتم تجاهله فوراً
+    forbidden_years = [2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
     for url in sources:
         try:
             print(f"Trying source: {url} ...")
             response = requests.get(url, headers=headers, timeout=20)
-            
             if response.status_code != 200: continue
 
             soup = BeautifulSoup(response.content, 'html.parser')
             text_content = soup.get_text()
             
-            # البحث عن الأرقام
+            # استخراج كل الأرقام الموجودة في الصفحة
             all_numbers = re.findall(r'\d+', text_content)
             nums = [int(x) for x in all_numbers]
 
-            # --- 🧠 الفلتر الذكي (Anti-Year Logic) ---
+            # --- 🧠 الفلتر الذكي جداً ---
             
-            # 1. فلتر عدن: (بين 1500 و 3000) ويجب ألا يكون سنة (2024, 2025)
+            # 1. فلتر عدن: 
+            # - يجب أن يكون أكبر من 1600 وأصغر من 3000
+            # - يجب ألا يكون ضمن السنوات المحظورة
             valid_aden = [
                 n for n in nums 
-                if 1500 < n < 3000 
-                and n != current_year 
-                and n != current_year - 1
+                if 1600 < n < 3000 
+                and n not in forbidden_years
             ]
             
-            # 2. فلتر صنعاء: (بين 520 و 600)
-            valid_sanaa = [n for n in nums if 520 < n < 600]
+            # 2. فلتر صنعاء: (بين 520 و 650)
+            valid_sanaa = [n for n in nums if 520 < n < 650]
             
             found = False
             
             if valid_aden:
-                # نأخذ الأكبر (لأنه عادة سعر البيع)، والآن لن يأخذ 2025
+                # نأخذ الرقم الأكبر (سعر البيع) بعد استبعاد السنوات
                 real_aden_price = max(valid_aden)
                 rates['aden']['usd'] = real_aden_price
                 rates['aden']['sar'] = int(real_aden_price / 3.8)
@@ -93,11 +92,11 @@ def get_market_rates():
                 print(f"✅ تم التقاط سعر صنعاء: {real_sanaa_price}")
 
             if found:
-                print("✨ نجح السحب وبيانات منطقية!")
+                print("✨ نجح السحب! البيانات نظيفة.")
                 return rates
 
         except Exception as e:
-            print(f"⚠️ خطأ مع {url}: {e}")
+            print(f"⚠️ خطأ بسيط مع {url}: {e}")
             continue
 
     return rates
@@ -126,7 +125,7 @@ def calculate_gold_updates(sanaa_usd, aden_usd):
         return None
 
 # ==========================================
-# 4. التنفيذ
+# 4. التنفيذ والرفع
 # ==========================================
 market_data = get_market_rates()
 sanaa_usd = market_data['sanaa']['usd']
