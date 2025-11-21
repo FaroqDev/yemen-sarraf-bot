@@ -2,8 +2,7 @@ import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db
 import yfinance as yf
-from datetime import datetime
-
+from datetime import datetime, timedelta  # 👈 تأكد أن السطر الأول هكذا
 # ==========================================
 # 1. إعدادات الاتصال (Config)
 # ==========================================
@@ -81,7 +80,8 @@ if gold_data:
         "rates/sanaa/usd_sell": NEW_SANAA_USD + 5, # هامش ربح افتراضي
         "rates/aden/usd_buy": NEW_ADEN_USD,
         "rates/aden/usd_sell": NEW_ADEN_USD + 10,
-        "rates/last_update": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+        # تعديل التوقيت ليكون بتوقيت اليمن (UTC + 3)
+        "rates/last_update": (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %I:%M %p"),
         
         # تحديث قسم الذهب بالكامل
         "gold": gold_data
