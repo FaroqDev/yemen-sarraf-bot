@@ -1,0 +1,31 @@
+name: Update Yemen Rates
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # تشغيل كل 30 دقيقة
+  workflow_dispatch:      # زر تشغيل يدوي
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install libraries
+        run: |
+          pip install -r requirements.txt
+
+      - name: Create Key File
+        # استخراج المفتاح السري من إعدادات GitHub
+        run: |
+          echo '${{ secrets.FIREBASE_JSON_KEY }}' > service-account.json
+
+      - name: Run Script
+        run: python main.py
