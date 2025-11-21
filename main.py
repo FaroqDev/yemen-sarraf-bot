@@ -30,6 +30,7 @@ def get_market_rates():
     print("🕷️ بدء عملية السحب...")
     
     sources = [
+        "https://www.aden-tm.net/news/351778",
         "https://ydn.news", # موقع يمن ديلي نيوز (غالباً دقيق)
         "https://www.2dec.net/rate.html",
         "https://yemen-exchange.com/"
