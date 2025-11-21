@@ -24,79 +24,82 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred, {'databaseURL': DATABASE_URL})
 
 # ==========================================
-# 2. 🕷️ دالة سحب الأسعار (متعددة المصادر)
+# 2. 🕷️ دالة سحب الأسعار (الذكية)
 # ==========================================
 def get_market_rates():
     print("🕷️ بدء عملية السحب...")
     
-    # قائمة مصادر (إذا فشل الأول نجرب الثاني)
+    # قائمة مصادر قوية
     sources = [
-        #"https://www.2dec.net/rate.html",
-        "http://yemenief.org/Currency.aspx",
-        "https://ydn.news/"
+        "https://ydn.news",
+        "https://www.2dec.net/rate.html", # المصدر الذي نجح معك
+        "https://economiyemen.net/",
+        "https://yemen-exchange.com/"
     ]
     
-    # تمويه الروبوت (كأنه متصفح كروم حقيقي)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ar-SA,ar;q=0.9,en;q=0.8',
-        'Referer': 'https://www.google.com/'
     }
 
     rates = {
-        "sanaa": {"usd": 535, "sar": 140}, # قيم احتياطية
+        "sanaa": {"usd": 535, "sar": 140},
         "aden": {"usd": 1660, "sar": 435}
     }
+    
+    current_year = datetime.now().year # 2025
 
     for url in sources:
         try:
             print(f"Trying source: {url} ...")
             response = requests.get(url, headers=headers, timeout=20)
             
-            if response.status_code != 200:
-                print(f"❌ المصدر رفض الاتصال: {response.status_code}")
-                continue # جرب الموقع التالي
+            if response.status_code != 200: continue
 
             soup = BeautifulSoup(response.content, 'html.parser')
             text_content = soup.get_text()
             
-            # البحث عن الأنماط (Regex)
-            # دولار عدن (1500-2500)
-            aden_matches = re.findall(r'(1[5-9]\d{2}|2\d{3})', text_content)
-            # دولار صنعاء (520-600)
-            sanaa_matches = re.findall(r'(5[2-6]\d)', text_content)
+            # البحث عن الأرقام
+            all_numbers = re.findall(r'\d+', text_content)
+            nums = [int(x) for x in all_numbers]
+
+            # --- 🧠 الفلتر الذكي (Anti-Year Logic) ---
+            
+            # 1. فلتر عدن: (بين 1500 و 3000) ويجب ألا يكون سنة (2024, 2025)
+            valid_aden = [
+                n for n in nums 
+                if 1500 < n < 3000 
+                and n != current_year 
+                and n != current_year - 1
+            ]
+            
+            # 2. فلتر صنعاء: (بين 520 و 600)
+            valid_sanaa = [n for n in nums if 520 < n < 600]
             
             found = False
             
-            if aden_matches:
-                nums = [int(x) for x in aden_matches]
-                # نأخذ الرقم الأكثر تكراراً أو المنطقي
-                valid_aden = [n for n in nums if 1500 < n < 3000]
-                if valid_aden:
-                    # نأخذ الوسيط أو الأكبر لضمان أنه سعر البيع
-                    rates['aden']['usd'] = max(valid_aden)
-                    rates['aden']['sar'] = int(rates['aden']['usd'] / 3.8) 
-                    found = True
-                    print(f"✅ تم التقاط سعر عدن: {rates['aden']['usd']}")
+            if valid_aden:
+                # نأخذ الأكبر (لأنه عادة سعر البيع)، والآن لن يأخذ 2025
+                real_aden_price = max(valid_aden)
+                rates['aden']['usd'] = real_aden_price
+                rates['aden']['sar'] = int(real_aden_price / 3.8)
+                found = True
+                print(f"✅ تم التقاط سعر عدن الصحيح: {real_aden_price}")
 
-            if sanaa_matches:
-                nums = [int(x) for x in sanaa_matches]
-                valid_sanaa = [n for n in nums if 520 < n < 600]
-                if valid_sanaa:
-                    rates['sanaa']['usd'] = max(valid_sanaa)
-                    rates['sanaa']['sar'] = int(rates['sanaa']['usd'] / 3.78)
-                    found = True
-                    print(f"✅ تم التقاط سعر صنعاء: {rates['sanaa']['usd']}")
+            if valid_sanaa:
+                real_sanaa_price = max(valid_sanaa)
+                rates['sanaa']['usd'] = real_sanaa_price
+                rates['sanaa']['sar'] = int(real_sanaa_price / 3.78)
+                found = True
+                print(f"✅ تم التقاط سعر صنعاء: {real_sanaa_price}")
 
             if found:
-                print("✨ نجح السحب!")
-                return rates # نخرج من الدالة فوراً لأننا وجدنا بيانات
+                print("✨ نجح السحب وبيانات منطقية!")
+                return rates
 
         except Exception as e:
-            print(f"⚠️ فشل مع هذا المصدر: {e}")
-            continue # جرب اللي بعده
+            print(f"⚠️ خطأ مع {url}: {e}")
+            continue
 
-    print("❌ فشلت كل المصادر، سيتم استخدام القيم الاحتياطية.")
     return rates
 
 # ==========================================
@@ -106,7 +109,6 @@ def calculate_gold_updates(sanaa_usd, aden_usd):
     try:
         gold_ticker = yf.Ticker("GC=F")
         global_ounce = gold_ticker.history(period="1d")['Close'].iloc[-1]
-        
         gram_24_usd = global_ounce / 31.1035
         
         def get_prices(usd_rate):
@@ -120,27 +122,22 @@ def calculate_gold_updates(sanaa_usd, aden_usd):
             "sanaa": get_prices(sanaa_usd),
             "aden": get_prices(aden_usd)
         }
-    except Exception as e:
-        print(f"Error Gold: {e}")
+    except Exception:
         return None
 
 # ==========================================
 # 4. التنفيذ
 # ==========================================
-
-# 1. السحب
 market_data = get_market_rates()
 sanaa_usd = market_data['sanaa']['usd']
 aden_usd = market_data['aden']['usd']
 
-# 2. الذهب
 gold_data = calculate_gold_updates(sanaa_usd, aden_usd)
 
-# 3. الوقت
+# توقيت اليمن
 yemen_time = datetime.utcnow() + timedelta(hours=3)
 formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
 
-# 4. الرفع
 if gold_data:
     updates = {
         "rates/sanaa/usd_buy": sanaa_usd,
@@ -157,7 +154,7 @@ if gold_data:
         "gold": gold_data
     }
 
-    print(f"🚀 جاري التحديث: صنعاء={sanaa_usd} | عدن={aden_usd}")
+    print(f"🚀 التحديث النهائي: صنعاء={sanaa_usd} | عدن={aden_usd}")
     ref = db.reference('/')
     ref.update(updates)
     print("DONE")
