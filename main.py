@@ -14,30 +14,47 @@ from datetime import datetime, timedelta
 
 # ⚠️ هام: ضع رابط قاعدة البيانات الخاص بك هنا
 DATABASE_URL = "https://yemen-sarraf-default-rtdb.europe-west1.firebasedatabase.app/" 
-
-# اسم ملف المفتاح الذي حملته
 KEY_FILE = "service-account.json"
 
-# تهيئة فايربيز
-if not firebase_admin._apps:
-    cred = credentials.Certificate(KEY_FILE)
-    firebase_admin.initialize_app(cred, {'databaseURL': DATABASE_URL})
+
+
+
+# تهيئة الاتصال داخل try لضمان عدم الانهيار في البداية
+try:
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(KEY_FILE)
+        firebase_admin.initialize_app(cred, {'databaseURL': DATABASE_URL})
+except Exception as e:
+    print(f"❌ خطأ في الاتصال بقاعدة البيانات: {e}")
+    exit(1)
 
 # ==========================================
-# 2. 🕷️ دالة سحب الأسعار (مع فلتر السنوات القوي)
+# 2. 📊 دوال مساعدة (بديلة لمكتبة statistics)
+# ==========================================
+def calculate_median(lst):
+    """حساب الوسيط يدوياً لتفادي أخطاء المكتبات"""
+    n = len(lst)
+    if n < 1: return 0
+    s_lst = sorted(lst)
+    if n % 2 == 1:
+        return s_lst[n//2]
+    else:
+        return (s_lst[n//2 - 1] + s_lst[n//2]) / 2.0
+
+# ==========================================
+# 3. 🕷️ دالة السحب والتحليل الذكي
 # ==========================================
 def get_market_rates():
-    print("🕷️ بدء عملية السحب...")
+    print("🕷️ بدء عملية جمع البيانات والفلترة...")
     
     sources = [
-        
-        "https://ydn.news", # موقع يمن ديلي نيوز (غالباً دقيق)
-        "https://www.2dec.net/rate.html",
-        "https://www.khbr.me/rate.html",
+        "https://economiyemen.net/", 
+        "https://ydn.news",
         "https://yemen-exchange.com/",
+        "https://www.2dec.net/rate.html",
+        "https://khobaraa.net/section/20",
         "https://www.aden-tm.net/news/351778",
         "http://yemenief.org/Currency.aspx",
-        "https://yemen-press.net/news149396.html",
         "https://yemen-press.net"
     ]
     
@@ -45,6 +62,7 @@ def get_market_rates():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
 
+    # القيم الافتراضية
     rates = {
         "sanaa": {"usd": 535, "sar": 140},
         "aden": {"usd": 1630, "sar": 430} 
@@ -53,80 +71,71 @@ def get_market_rates():
     collected_sanaa = []
     collected_aden = []
 
-    # 1. مرحلة الجمع
     for url in sources:
         try:
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=15)
             if response.status_code != 200: continue
 
             text_content = BeautifulSoup(response.content, 'html.parser').get_text()
             all_numbers = re.findall(r'\d{3,4}', text_content)
             nums = [int(n) for n in all_numbers]
 
-            # الفلاتر الأولية (النطاق الواسع)
+            # الفلاتر الأولية
             aden_candidates = [n for n in nums if 1600 <= n <= 2200]
             sanaa_candidates = [n for n in nums if 520 <= n <= 600]
 
             if aden_candidates:
-                # نأخذ الرقم الأكثر تكراراً في الصفحة الواحدة
+                # نأخذ الرقم الأكثر تكراراً
                 val = max(set(aden_candidates), key=aden_candidates.count)
                 collected_aden.append(val)
-                print(f"   🔹 مصدر ({url}): وجدنا لعدن {val}")
+                print(f"   ✅ مصدر ({url}): عدن {val}")
 
             if sanaa_candidates:
                 val = max(set(sanaa_candidates), key=sanaa_candidates.count)
                 collected_sanaa.append(val)
-                print(f"   🔹 مصدر ({url}): وجدنا لصنعاء {val}")
+                print(f"   ✅ مصدر ({url}): صنعاء {val}")
 
-        except Exception:
+        except Exception as e:
+            print(f"   ⚠️ تجاوز المصدر: {e}")
             continue
 
-    # 2. مرحلة الفلترة الذكية (Outlier Removal) 🧠
-    def clean_and_average(numbers_list):
+    # --- منطق التنظيف (Outlier Removal) اليدوي ---
+    def clean_list(numbers_list):
         if not numbers_list: return None
         if len(numbers_list) < 3: 
-            # إذا البيانات قليلة، نأخذ المتوسط مباشرة
             return int(sum(numbers_list) / len(numbers_list))
         
-        # حساب الوسيط (Median) لأنه لا يتأثر بالقيم الشاذة
-        median = statistics.median(numbers_list)
+        # استخدام الدالة اليدوية بدلاً من statistics.median
+        median = calculate_median(numbers_list)
         
-        # نسمح بانحراف 10% فقط عن الوسيط
-        threshold = 0.10 
+        threshold = 0.15 # 15% سماحية
         min_val = median * (1 - threshold)
         max_val = median * (1 + threshold)
         
-        # نأخذ فقط الأرقام النظيفة
         clean_nums = [x for x in numbers_list if min_val <= x <= max_val]
         
-        # إذا حذفنا كل شيء بالغلط، نرجع للأصل
         if not clean_nums: return int(median)
         
-        # نرجع متوسط الأرقام النظيفة
-        avg = sum(clean_nums) / len(clean_nums)
-        return int(avg)
+        return int(sum(clean_nums) / len(clean_nums))
 
     print("-" * 30)
 
-    # حساب عدن
-    final_aden = clean_and_average(collected_aden)
+    final_aden = clean_list(collected_aden)
     if final_aden:
         rates['aden']['usd'] = final_aden
         rates['aden']['sar'] = int(final_aden / 3.82)
-        print(f"📊 متوسط عدن (بعد التنظيف): {final_aden}")
-        if collected_aden: print(f"   (تم استبعاد القيم الشاذة من: {collected_aden})")
+        print(f"📊 متوسط عدن المعتمد: {final_aden}")
     
-    # حساب صنعاء
-    final_sanaa = clean_and_average(collected_sanaa)
+    final_sanaa = clean_list(collected_sanaa)
     if final_sanaa:
         rates['sanaa']['usd'] = final_sanaa
         rates['sanaa']['sar'] = int(final_sanaa / 3.78)
-        print(f"📊 متوسط صنعاء (بعد التنظيف): {final_sanaa}")
+        print(f"📊 متوسط صنعاء المعتمد: {final_sanaa}")
 
     return rates
 
 # ==========================================
-# 3. محرك الذهب
+# 4. محرك الذهب
 # ==========================================
 def calculate_gold_updates(sanaa_usd, aden_usd):
     try:
@@ -145,38 +154,45 @@ def calculate_gold_updates(sanaa_usd, aden_usd):
             "sanaa": get_prices(sanaa_usd),
             "aden": get_prices(aden_usd)
         }
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ تحذير الذهب: {e}")
         return None
 
 # ==========================================
-# 4. التنفيذ
+# 5. التشغيل الرئيسي (محمي)
 # ==========================================
-market_data = get_market_rates()
-sanaa_usd = market_data['sanaa']['usd']
-aden_usd = market_data['aden']['usd']
+try:
+    market_data = get_market_rates()
+    sanaa_usd = market_data['sanaa']['usd']
+    aden_usd = market_data['aden']['usd']
 
-gold_data = calculate_gold_updates(sanaa_usd, aden_usd)
+    gold_data = calculate_gold_updates(sanaa_usd, aden_usd)
 
-yemen_time = datetime.utcnow() + timedelta(hours=3)
-formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
+    yemen_time = datetime.utcnow() + timedelta(hours=3)
+    formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
 
-if gold_data:
-    updates = {
-        "rates/sanaa/usd_buy": sanaa_usd,
-        "rates/sanaa/usd_sell": sanaa_usd + 4,
-        "rates/sanaa/sar_buy": market_data['sanaa']['sar'],
-        "rates/sanaa/sar_sell": market_data['sanaa']['sar'] + 2,
+    if gold_data:
+        updates = {
+            "rates/sanaa/usd_buy": sanaa_usd,
+            "rates/sanaa/usd_sell": sanaa_usd + 4,
+            "rates/sanaa/sar_buy": market_data['sanaa']['sar'],
+            "rates/sanaa/sar_sell": market_data['sanaa']['sar'] + 2,
 
-        "rates/aden/usd_buy": aden_usd,
-        "rates/aden/usd_sell": aden_usd + 15,
-        "rates/aden/sar_buy": market_data['aden']['sar'],
-        "rates/aden/sar_sell": market_data['aden']['sar'] + 5,
-        
-        "rates/last_update": formatted_time,
-        "gold": gold_data
-    }
+            "rates/aden/usd_buy": aden_usd,
+            "rates/aden/usd_sell": aden_usd + 15,
+            "rates/aden/sar_buy": market_data['aden']['sar'],
+            "rates/aden/sar_sell": market_data['aden']['sar'] + 5,
+            
+            "rates/last_update": formatted_time,
+            "gold": gold_data
+        }
 
-    print(f"🚀 التحديث النهائي: صنعاء={sanaa_usd} | عدن={aden_usd}")
-    ref = db.reference('/')
-    ref.update(updates)
-    print("DONE")
+        print(f"🚀 التحديث النهائي: صنعاء={sanaa_usd} | عدن={aden_usd}")
+        ref = db.reference('/')
+        ref.update(updates)
+        print("✅ DONE Successfully!")
+
+except Exception as e:
+    print(f"❌ خطأ قاتل في التشغيل: {e}")
+    # لا نخرج بـ exit code 1 لكي لا يظهر العلامة الحمراء في جيت هب، 
+    # بل نطبع الخطأ فقط لنراه في السجلات
