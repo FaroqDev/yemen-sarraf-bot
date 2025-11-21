@@ -31,7 +31,7 @@ def get_market_rates():
     
     # قائمة مصادر قوية
     sources = [
-        "https://ydn.news",
+        #"https://ydn.news",
         "https://www.2dec.net/rate.html", # المصدر الذي نجح معك
         "https://economiyemen.net/",
         "https://yemen-exchange.com/"
