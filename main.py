@@ -40,13 +40,11 @@ def get_market_rates():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
 
+    # القيم الافتراضية (آخر أسعار معروفة تقريباً لتفادي الأصفار)
     rates = {
-        "sanaa": {"usd": 535, "sar": 140},
-        "aden": {"usd": 1660, "sar": 435}
+        "sanaa": {"usd": 538, "sar": 140},
+        "aden": {"usd": 2040, "sar": 535} # تحديث القيم الافتراضية لتقارب الواقع
     }
-    
-    # 🚫 القائمة السوداء: أي رقم يشبه هذه السنوات سيتم تجاهله فوراً
-    forbidden_years = [2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
     for url in sources:
         try:
@@ -55,55 +53,57 @@ def get_market_rates():
             if response.status_code != 200: continue
 
             soup = BeautifulSoup(response.content, 'html.parser')
-            text_content = soup.get_text()
             
-            # استخراج كل الأرقام الموجودة في الصفحة
-            all_numbers = re.findall(r'\d+', text_content)
-            nums = [int(x) for x in all_numbers]
+            # نبحث عن جميع صفوف الجداول في الصفحة
+            rows = soup.find_all('tr')
+            
+            found_sanaa = False
+            found_aden = False
 
-            # --- 🧠 الفلتر الذكي جداً ---
-            
-            # 1. فلتر عدن: 
-            # - يجب أن يكون أكبر من 1600 وأصغر من 3000
-            # - يجب ألا يكون ضمن السنوات المحظورة
-            valid_aden = [
-                n for n in nums 
-                if 1600 < n < 3000 
-                and n not in forbidden_years
-            ]
-            
-            # 2. فلتر صنعاء: (بين 520 و 650)
-            valid_sanaa = [n for n in nums if 520 < n < 650]
-            
-            found = False
-            
-            if valid_aden:
-                # نأخذ الرقم الأكبر (سعر البيع) بعد استبعاد السنوات
-                real_aden_price = max(valid_aden)
-                rates['aden']['usd'] = real_aden_price
-                rates['aden']['sar'] = int(real_aden_price / 3.8)
-                found = True
-                print(f"✅ تم التقاط سعر عدن الصحيح: {real_aden_price}")
+            for row in rows:
+                text = row.get_text(strip=True) # نص الصف كاملاً
+                
+                # استخراج الأرقام من هذا الصف فقط
+                numbers = re.findall(r'\d+', text)
+                nums = [int(n) for n in numbers if len(n) >= 3] # نأخذ الأرقام من 3 خانات فأكثر
 
-            if valid_sanaa:
-                real_sanaa_price = max(valid_sanaa)
-                rates['sanaa']['usd'] = real_sanaa_price
-                rates['sanaa']['sar'] = int(real_sanaa_price / 3.78)
-                found = True
-                print(f"✅ تم التقاط سعر صنعاء: {real_sanaa_price}")
+                if not nums: continue
 
-            if found:
-                print("✨ نجح السحب! البيانات نظيفة.")
+                # --- تحليل صف صنعاء ---
+                # إذا الصف يحتوي على (صنعاء) و (دولار)
+                if ("صنعاء" in text or "Sanaa" in text) and ("دولار" in text or "USD" in text):
+                    # نبحث عن رقم منطقي لصنعاء (520 - 600)
+                    valid = [n for n in nums if 520 <= n <= 600]
+                    if valid:
+                        rates['sanaa']['usd'] = max(valid) # البيع
+                        rates['sanaa']['sar'] = int(rates['sanaa']['usd'] / 3.75)
+                        found_sanaa = True
+                        print(f"✅ صنعاء (من الجدول): {rates['sanaa']['usd']}")
+
+                # --- تحليل صف عدن ---
+                # إذا الصف يحتوي على (عدن) و (دولار)
+                elif ("عدن" in text or "Aden" in text) and ("دولار" in text or "USD" in text):
+                    # نبحث عن رقم منطقي لعدن (1600 - 3000)
+                    valid = [n for n in nums if 1600 <= n <= 3000]
+                    if valid:
+                        rates['aden']['usd'] = max(valid)
+                        rates['aden']['sar'] = int(rates['aden']['usd'] / 3.8)
+                        found_aden = True
+                        print(f"✅ عدن (من الجدول): {rates['aden']['usd']}")
+
+            # إذا وجدنا البيانات في هذا الموقع، نتوقف ولا داعي لتجربة الموقع التالي
+            if found_sanaa and found_aden:
+                print("✨ تم العثور على البيانات بدقة!")
                 return rates
 
         except Exception as e:
-            print(f"⚠️ خطأ بسيط مع {url}: {e}")
+            print(f"⚠️ تجاوز المصدر بسبب: {e}")
             continue
 
     return rates
 
 # ==========================================
-# 3. محرك الذهب
+# 3. محرك الذهب (كما هو)
 # ==========================================
 def calculate_gold_updates(sanaa_usd, aden_usd):
     try:
@@ -126,7 +126,7 @@ def calculate_gold_updates(sanaa_usd, aden_usd):
         return None
 
 # ==========================================
-# 4. التنفيذ والرفع
+# 4. التنفيذ
 # ==========================================
 market_data = get_market_rates()
 sanaa_usd = market_data['sanaa']['usd']
@@ -134,7 +134,6 @@ aden_usd = market_data['aden']['usd']
 
 gold_data = calculate_gold_updates(sanaa_usd, aden_usd)
 
-# توقيت اليمن
 yemen_time = datetime.utcnow() + timedelta(hours=3)
 formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
 
