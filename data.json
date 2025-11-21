@@ -1,0 +1,26 @@
+{
+  "rates": {
+    "sanaa": {
+      "usd_buy": 530,
+      "usd_sell": 535,
+      "sar_buy": 140,
+      "sar_sell": 142
+    },
+    "aden": {
+      "usd_buy": 1650,
+      "usd_sell": 1660,
+      "sar_buy": 430,
+      "sar_sell": 435
+    },
+    "last_update": "انتظار التحديث..."
+  },
+  "gold": {
+    "global_ounce_usd": 0,
+    "sanaa": { "gram_21": 0, "gunaih": 0 },
+    "aden": { "gram_21": 0, "gunaih": 0 }
+  },
+  "config": {
+    "status": "active",
+    "message": "مرحباً بك في تطبيق صراف اليمن"
+  }
+}
