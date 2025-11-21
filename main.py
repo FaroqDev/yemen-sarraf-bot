@@ -30,80 +30,103 @@ def get_market_rates():
     print("🕷️ بدء عملية السحب...")
     
     sources = [
-        "https://www.aden-tm.net/news/351778",
+        
         "https://ydn.news", # موقع يمن ديلي نيوز (غالباً دقيق)
         "https://www.2dec.net/rate.html",
-        "https://yemen-exchange.com/"
+        "https://www.khbr.me/rate.html",
+        "https://yemen-exchange.com/",
+        "https://www.aden-tm.net/news/351778",
+        "http://yemenief.org/Currency.aspx",
+        "https://yemen-press.net/news149396.html",
+        "https://yemen-press.net"
     ]
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
 
-    # القيم الافتراضية (آخر أسعار معروفة تقريباً لتفادي الأصفار)
     rates = {
-        "sanaa": {"usd": 538, "sar": 140},
-        "aden": {"usd": 2040, "sar": 535} # تحديث القيم الافتراضية لتقارب الواقع
+        "sanaa": {"usd": 535, "sar": 140},
+        "aden": {"usd": 1630, "sar": 430} 
     }
 
+    collected_sanaa = []
+    collected_aden = []
+
+    # 1. مرحلة الجمع
     for url in sources:
         try:
-            print(f"Trying source: {url} ...")
-            response = requests.get(url, headers=headers, timeout=20)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code != 200: continue
 
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # نبحث عن جميع صفوف الجداول في الصفحة
-            rows = soup.find_all('tr')
-            
-            found_sanaa = False
-            found_aden = False
+            text_content = BeautifulSoup(response.content, 'html.parser').get_text()
+            all_numbers = re.findall(r'\d{3,4}', text_content)
+            nums = [int(n) for n in all_numbers]
 
-            for row in rows:
-                text = row.get_text(strip=True) # نص الصف كاملاً
-                
-                # استخراج الأرقام من هذا الصف فقط
-                numbers = re.findall(r'\d+', text)
-                nums = [int(n) for n in numbers if len(n) >= 3] # نأخذ الأرقام من 3 خانات فأكثر
+            # الفلاتر الأولية (النطاق الواسع)
+            aden_candidates = [n for n in nums if 1600 <= n <= 2200]
+            sanaa_candidates = [n for n in nums if 520 <= n <= 600]
 
-                if not nums: continue
+            if aden_candidates:
+                # نأخذ الرقم الأكثر تكراراً في الصفحة الواحدة
+                val = max(set(aden_candidates), key=aden_candidates.count)
+                collected_aden.append(val)
+                print(f"   🔹 مصدر ({url}): وجدنا لعدن {val}")
 
-                # --- تحليل صف صنعاء ---
-                # إذا الصف يحتوي على (صنعاء) و (دولار)
-                if ("صنعاء" in text or "Sanaa" in text) and ("دولار" in text or "USD" in text):
-                    # نبحث عن رقم منطقي لصنعاء (520 - 600)
-                    valid = [n for n in nums if 520 <= n <= 600]
-                    if valid:
-                        rates['sanaa']['usd'] = max(valid) # البيع
-                        rates['sanaa']['sar'] = int(rates['sanaa']['usd'] / 3.75)
-                        found_sanaa = True
-                        print(f"✅ صنعاء (من الجدول): {rates['sanaa']['usd']}")
+            if sanaa_candidates:
+                val = max(set(sanaa_candidates), key=sanaa_candidates.count)
+                collected_sanaa.append(val)
+                print(f"   🔹 مصدر ({url}): وجدنا لصنعاء {val}")
 
-                # --- تحليل صف عدن ---
-                # إذا الصف يحتوي على (عدن) و (دولار)
-                elif ("عدن" in text or "Aden" in text) and ("دولار" in text or "USD" in text):
-                    # نبحث عن رقم منطقي لعدن (1600 - 3000)
-                    valid = [n for n in nums if 1600 <= n <= 3000]
-                    if valid:
-                        rates['aden']['usd'] = max(valid)
-                        rates['aden']['sar'] = int(rates['aden']['usd'] / 3.8)
-                        found_aden = True
-                        print(f"✅ عدن (من الجدول): {rates['aden']['usd']}")
-
-            # إذا وجدنا البيانات في هذا الموقع، نتوقف ولا داعي لتجربة الموقع التالي
-            if found_sanaa and found_aden:
-                print("✨ تم العثور على البيانات بدقة!")
-                return rates
-
-        except Exception as e:
-            print(f"⚠️ تجاوز المصدر بسبب: {e}")
+        except Exception:
             continue
+
+    # 2. مرحلة الفلترة الذكية (Outlier Removal) 🧠
+    def clean_and_average(numbers_list):
+        if not numbers_list: return None
+        if len(numbers_list) < 3: 
+            # إذا البيانات قليلة، نأخذ المتوسط مباشرة
+            return int(sum(numbers_list) / len(numbers_list))
+        
+        # حساب الوسيط (Median) لأنه لا يتأثر بالقيم الشاذة
+        median = statistics.median(numbers_list)
+        
+        # نسمح بانحراف 10% فقط عن الوسيط
+        threshold = 0.10 
+        min_val = median * (1 - threshold)
+        max_val = median * (1 + threshold)
+        
+        # نأخذ فقط الأرقام النظيفة
+        clean_nums = [x for x in numbers_list if min_val <= x <= max_val]
+        
+        # إذا حذفنا كل شيء بالغلط، نرجع للأصل
+        if not clean_nums: return int(median)
+        
+        # نرجع متوسط الأرقام النظيفة
+        avg = sum(clean_nums) / len(clean_nums)
+        return int(avg)
+
+    print("-" * 30)
+
+    # حساب عدن
+    final_aden = clean_and_average(collected_aden)
+    if final_aden:
+        rates['aden']['usd'] = final_aden
+        rates['aden']['sar'] = int(final_aden / 3.82)
+        print(f"📊 متوسط عدن (بعد التنظيف): {final_aden}")
+        if collected_aden: print(f"   (تم استبعاد القيم الشاذة من: {collected_aden})")
+    
+    # حساب صنعاء
+    final_sanaa = clean_and_average(collected_sanaa)
+    if final_sanaa:
+        rates['sanaa']['usd'] = final_sanaa
+        rates['sanaa']['sar'] = int(final_sanaa / 3.78)
+        print(f"📊 متوسط صنعاء (بعد التنظيف): {final_sanaa}")
 
     return rates
 
 # ==========================================
-# 3. محرك الذهب (كما هو)
+# 3. محرك الذهب
 # ==========================================
 def calculate_gold_updates(sanaa_usd, aden_usd):
     try:
