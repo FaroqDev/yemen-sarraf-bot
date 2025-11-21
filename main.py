@@ -2,7 +2,7 @@ import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db
 import yfinance as yf
-from datetime import datetime, timedelta  # 👈 تأكد أن السطر الأول هكذا
+from datetime import datetime, timedelta  # 👈 تأكد أن هذا السطر موجود هكذا
 # ==========================================
 # 1. إعدادات الاتصال (Config)
 # ==========================================
@@ -75,15 +75,16 @@ gold_data = calculate_gold_updates(NEW_SANAA_USD, NEW_ADEN_USD)
 
 if gold_data:
     # تجهيز البيانات للإرسال
+    # حساب توقيت اليمن (UTC + 3)
+    yemen_time = datetime.utcnow() + timedelta(hours=3)
+    formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
+
     updates = {
         "rates/sanaa/usd_buy": NEW_SANAA_USD,
-        "rates/sanaa/usd_sell": NEW_SANAA_USD + 5, # هامش ربح افتراضي
+        "rates/sanaa/usd_sell": NEW_SANAA_USD + 5, 
         "rates/aden/usd_buy": NEW_ADEN_USD,
         "rates/aden/usd_sell": NEW_ADEN_USD + 10,
-        # تعديل التوقيت ليكون بتوقيت اليمن (UTC + 3)
-        "rates/last_update": (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %I:%M %p"),
-        
-        # تحديث قسم الذهب بالكامل
+        "rates/last_update": formatted_time, # 👈 استخدام المتغير الجديد
         "gold": gold_data
     }
 
