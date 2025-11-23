@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta
 
 # إعدادات الاتصال
-DATABASE_URL = "https://YOUR-PROJECT-ID-default-rtdb.firebaseio.com/" 
+DATABASE_URL = "https://yemen-sarraf-default-rtdb.europe-west1.firebasedatabase.app/"
 KEY_FILE = "service-account.json"
 
 if not firebase_admin._apps:
