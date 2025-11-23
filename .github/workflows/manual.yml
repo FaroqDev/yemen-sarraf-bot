@@ -1,0 +1,46 @@
+name: 🛠️ Manual Price Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: 'المدينة'
+        required: true
+        type: choice
+        options:
+        - sanaa
+        - aden
+      currency:
+        description: 'العملة'
+        required: true
+        type: choice
+        options:
+        - usd
+        - sar
+      buy_price:
+        description: 'سعر الشراء'
+        required: true
+        type: string
+      sell_price:
+        description: 'سعر البيع'
+        required: true
+        type: string
+
+jobs:
+  update-price:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install Libs
+        run: pip install firebase-admin yfinance
+
+      - name: Create Key
+        run: echo '${{ secrets.FIREBASE_JSON_KEY }}' > service-account.json
+
+      - name: Run Update Script
+        # تمرير المدخلات من واجهة GitHub إلى بايثون
+        run: python manual_update.py ${{ inputs.city }} ${{ inputs.currency }} ${{ inputs.buy_price }} ${{ inputs.sell_price }}
