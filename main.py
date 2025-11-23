@@ -22,7 +22,7 @@ TELEGRAM_BOT_TOKEN = "8583890330:AAFerk3-5YcYeZ95awp9Sf7tBy_Q-djbSZ0"
 TELEGRAM_CHAT_ID = 617150775
 
 # 🛡️ حد الأمان (أي تغيير أكبر من هذا الرقم يعتبر خطراً)
-SAFETY_THRESHOLD = 2
+SAFETY_THRESHOLD = 20
 
 
 
