@@ -40,6 +40,7 @@ except Exception as e:
 def get_market_rates():
     print("🕷️ بدء عملية السحب والتحليل...")
     sources = [
+        "https://boqash.com/price-currency/",
         "https://economiyemen.net/", "https://ydn.news",
         "https://yemen-exchange.com/", "https://www.2dec.net/rate.html",
         "https://khobaraa.net/section/20", "https://www.aden-tm.net/news/351778",
