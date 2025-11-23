@@ -19,7 +19,7 @@ except Exception as e:
     print(f"❌ Error Init: {e}")
     exit(1)
 
-# --- دالة حساب الذهب ---
+# دالة الذهب
 def calculate_gold(usd_buy_rate):
     try:
         gold_ticker = yf.Ticker("GC=F")
@@ -33,72 +33,75 @@ def calculate_gold(usd_buy_rate):
     except: return None
 
 # ==========================================
-# 2. التنفيذ الرئيسي
+# التشغيل الرئيسي (تحديث شامل)
 # ==========================================
 try:
-    # قراءة المدخلات من GitHub Actions
-    # الترتيب: [script, city, currency, buy, sell, notify]
+    # قراءة المدخلات [script, city, usd_buy, usd_sell, sar_buy, sar_sell, notify]
     city = sys.argv[1]
-    currency = sys.argv[2]
-    buy_price = float(sys.argv[3])
-    sell_price = float(sys.argv[4])
-    should_notify = sys.argv[5].lower() == 'true'
+    usd_buy = float(sys.argv[2])
+    usd_sell = float(sys.argv[3])
+    sar_buy = float(sys.argv[4])
+    sar_sell = float(sys.argv[5])
+    should_notify = sys.argv[6].lower() == 'true'
     
-    print(f"🔄 التحديث اليدوي: {city} | {currency} | {buy_price}")
+    print(f"🔄 تحديث شامل لـ {city}...")
 
     ref = db.reference('/')
     
-    # 1. جلب السعر القديم لحساب المؤشر (Trend)
-    old_price_snapshot = ref.child(f'rates/{city}/{currency}_buy').get()
-    old_price = float(old_price_snapshot) if old_price_snapshot is not None else buy_price
+    # 1. جلب السعر القديم لحساب المؤشر (نعتمد على الدولار كمقياس)
+    old_price_snapshot = ref.child(f'rates/{city}/usd_buy').get()
+    old_price = float(old_price_snapshot) if old_price_snapshot is not None else usd_buy
     
     # 2. حساب المؤشر
     trend = 0
-    if buy_price > old_price: trend = 1     # صعود
-    elif buy_price < old_price: trend = -1  # هبوط
+    if usd_buy > old_price: trend = 1     # صعود
+    elif usd_buy < old_price: trend = -1  # هبوط
     
-    # 3. تجهيز الوقت
+    # 3. الوقت
     yemen_time = datetime.utcnow() + timedelta(hours=3)
     formatted_time = yemen_time.strftime("%Y-%m-%d %I:%M %p")
 
-    # 4. قائمة التحديثات
+    # 4. تجهيز البيانات (دولار + سعودي + وقت + مؤشر)
     updates = {
-        f"rates/{city}/{currency}_buy": buy_price,
-        f"rates/{city}/{currency}_sell": sell_price,
-        f"rates/{city}/trend": trend,  # 👈 تحديث المؤشر
+        f"rates/{city}/usd_buy": usd_buy,
+        f"rates/{city}/usd_sell": usd_sell,
+        f"rates/{city}/sar_buy": sar_buy,
+        f"rates/{city}/sar_sell": sar_sell,
+        f"rates/{city}/trend": trend,
         "rates/last_update": formatted_time
     }
 
-    # تحديث الذهب إذا كان التغيير في الدولار
-    if currency == 'usd':
-        gold_data = calculate_gold(buy_price)
-        if gold_data:
-            updates[f"gold/{city}"] = {
-                "gram_24": gold_data['gram_24'],
-                "gram_21": gold_data['gram_21'],
-                "gunaih": gold_data['gunaih']
-            }
-            updates["gold/global_ounce_usd"] = gold_data['global_ounce']
+    # 5. تحديث الذهب (يعتمد على الدولار الجديد)
+    gold_data = calculate_gold(usd_buy)
+    if gold_data:
+        updates[f"gold/{city}"] = {
+            "gram_24": gold_data['gram_24'],
+            "gram_21": gold_data['gram_21'],
+            "gunaih": gold_data['gunaih']
+        }
+        updates["gold/global_ounce_usd"] = gold_data['global_ounce']
 
-    # تنفيذ التحديث في القاعدة
+    # التنفيذ
     ref.update(updates)
-    print(f"✅ تم تحديث البيانات بنجاح! (Trend: {trend})")
+    print(f"✅ تم التحديث الشامل بنجاح! (Trend: {trend})")
 
-    # 5. إرسال الإشعار (إذا طلب المستخدم)
+    # 6. الإشعار الموحد
     if should_notify:
-        flag = "🇺🇸" if currency == 'usd' else "🇸🇦"
-        curr_name = "دولار" if currency == 'usd' else "سعودي"
-        city_name = "صنعاء" if city == 'sanaa' else "عدن"
-        
-        # تحديد أيقونة السهم للإشعار
         arrow = "➖"
         if trend == 1: arrow = "🔺"
         elif trend == -1: arrow = "🔻"
         
+        city_name = "صنعاء" if city == 'sanaa' else "عدن"
+        
+        msg_body = (
+            f"🇺🇸 دولار: {usd_buy} - {usd_sell}\n"
+            f"🇸🇦 سعودي: {sar_buy} - {sar_sell}"
+        )
+        
         msg = messaging.Message(
             notification=messaging.Notification(
-                title=f"{arrow} تحديث يدوي: {city_name} {flag}",
-                body=f"{curr_name}: شراء {buy_price} | بيع {sell_price}"
+                title=f"{arrow} تحديث أسعار {city_name}",
+                body=msg_body
             ),
             topic='rates',
         )

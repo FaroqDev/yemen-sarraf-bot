@@ -1,4 +1,4 @@
-name: 🛠️ Manual Price Update
+name: 🛠️ Full City Update
 
 on:
   workflow_dispatch:
@@ -10,27 +10,27 @@ on:
         options:
         - sanaa
         - aden
-      currency:
-        description: 'العملة'
-        required: true
-        type: choice
-        options:
-        - usd
-        - sar
-      buy_price:
-        description: 'سعر الشراء'
+      usd_buy:
+        description: '🇺🇸 دولار (شراء)'
         required: true
         type: string
-      sell_price:
-        description: 'سعر البيع'
+      usd_sell:
+        description: '🇺🇸 دولار (بيع)'
         required: true
         type: string
-      # 👇 الخيار الجديد المضاف
+      sar_buy:
+        description: '🇸🇦 سعودي (شراء)'
+        required: true
+        type: string
+      sar_sell:
+        description: '🇸🇦 سعودي (بيع)'
+        required: true
+        type: string
       send_notification:
-        description: 'إرسال إشعار للمستخدمين؟'
+        description: 'إرسال إشعار؟'
         required: true
         type: boolean
-        default: true  # الافتراضي نعم
+        default: true
 
 jobs:
   update-price:
@@ -48,5 +48,5 @@ jobs:
         run: echo '${{ secrets.FIREBASE_JSON_KEY }}' > service-account.json
 
       - name: Run Update Script
-        # نمرر قيمة الإشعار (true/false) كمعامل خامس
-        run: python manual_update.py ${{ inputs.city }} ${{ inputs.currency }} ${{ inputs.buy_price }} ${{ inputs.sell_price }} ${{ inputs.send_notification }}
+        # نمرر الـ 6 متغيرات الجديدة
+        run: python manual_update.py ${{ inputs.city }} ${{ inputs.usd_buy }} ${{ inputs.usd_sell }} ${{ inputs.sar_buy }} ${{ inputs.sar_sell }} ${{ inputs.send_notification }}
