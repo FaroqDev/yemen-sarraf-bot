@@ -35,61 +35,90 @@ except Exception as e:
     exit(1)
 
 # ==========================================
-# 2. دوال السحب والتحليل (المحسنة)
+# 2. دوال السحب
 # ==========================================
 def get_market_rates():
     print("🕷️ بدء عملية السحب والتحليل...")
     
+    # القيم الافتراضية (احتياطي 100%)
+    # هذه القيم تمنع ظهور خطأ NoneType إذا فشلت كل المواقع
+    default_rates = {
+        "sanaa": {"usd": 535, "sar": 140},
+        "aden": {"usd": 1630, "sar": 430}
+    }
+
     sources = [
-        "https://boqash.com/price-currency/",  # 👈 تمت إعادته كأول مصدر (لأنه موثوق)
-        "https://economiyemen.net/", 
-        "https://ydn.news",
-        "https://yemen-exchange.com/",
-        "https://www.2dec.net/rate.html",
-        "https://khobaraa.net/section/20",
-        "https://www.aden-tm.net/news/351778",
-        "http://yemenief.org/Currency.aspx",
-        "https://yemen-press.net"
+        "https://boqash.com/price-currency/",
+        "https://economiyemen.net/", "https://ydn.news",
+        "https://yemen-exchange.com/", "https://www.2dec.net/rate.html",
+        "https://khobaraa.net/section/20", "https://www.aden-tm.net/news/351778",
+        "http://yemenief.org/Currency.aspx", "https://yemen-press.net"
     ]
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
-    # ... (بقية الدالة كما هي تماماً دون تغيير)
+    collected_sanaa = []
+    collected_aden = []
+    forbidden_numbers = list(range(2010, 2031)) 
+
+    for url in sources:
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200: continue
+            
+            text = BeautifulSoup(response.content, 'html.parser').get_text()
+            nums = [int(n) for n in re.findall(r'\d{3,4}', text)]
+            
+            ac = [n for n in nums if 1600 <= n <= 2200 and n not in forbidden_numbers]
+            sc = [n for n in nums if 520 <= n <= 600]
+
+            if ac: collected_aden.append(max(set(ac), key=ac.count))
+            if sc: collected_sanaa.append(max(set(sc), key=sc.count))
+        except: continue
+
+    def clean_average(lst):
+        lst = [n for n in lst if n not in forbidden_numbers]
+        if not lst: return None
+        if len(lst) < 3: return int(sum(lst)/len(lst))
+        lst.sort()
+        mid = len(lst)//2
+        median = lst[mid] if len(lst)%2!=0 else (lst[mid-1]+lst[mid])/2
+        clean = [x for x in lst if median*0.85 <= x <= median*1.15]
+        return int(sum(clean)/len(clean)) if clean else int(median)
+
+    # محاولة حساب المتوسطات
+    fa = clean_average(collected_aden)
+    fs = clean_average(collected_sanaa)
+
+    # تحديث القيم الافتراضية بالقيم الجديدة إن وجدت
+    if fa: 
+        default_rates['aden']['usd'] = fa
+        default_rates['aden']['sar'] = int(fa/3.82)
+    
+    if fs: 
+        default_rates['sanaa']['usd'] = fs
+        default_rates['sanaa']['sar'] = int(fs/3.78)
+    
+    # إرجاع القاموس دائماً (مستحيل يرجع None)
+    return default_rates
 
 # ==========================================
-# 3. 🟡 محرك الذهب (المصفح ضد الأخطاء)
+# 3. محرك الذهب (المحمي)
 # ==========================================
-def get_global_gold_price():
-    print("🟡 جاري جلب سعر الذهب العالمي...")
-    
-    # المحاولة 1: مصدر API مباشر (GoldPrice.org) - دقيق جداً
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        # هذا الرابط يعيد JSON مباشر للسعر
-        r = requests.get("https://data-asg.goldprice.org/dbXRates/USD", headers=headers, timeout=10)
-        data = r.json()
-        price = data['items'][0]['xauPrice']
-        print(f"✅ تم الجلب من GoldPrice: ${price}")
-        return float(price)
-    except Exception as e:
-        print(f"⚠️ فشل المصدر الأول: {e}")
-
-    # المحاولة 2: ياهو فاينانس (العقود الآجلة GC=F)
-    try:
-        gold_ticker = yf.Ticker("GC=F")
-        history = gold_ticker.history(period="1d")
-        if not history.empty:
-            price = history['Close'].iloc[-1]
-            print(f"✅ تم الجلب من Yahoo (GC=F): ${price}")
-            return float(price)
-    except Exception as e:
-        print(f"⚠️ فشل المصدر الثاني: {e}")
-
-    # المحاولة 3: قيمة احتياطية (لمنع توقف التطبيق)
-    print("❌ فشلت كل المصادر، استخدام قيمة احتياطية.")
-    return 2715.0
-
 def calculate_gold_updates(sanaa_usd, aden_usd):
     try:
-        global_ounce = get_global_gold_price()
+        gold_ticker = yf.Ticker("XAUUSD=X") 
+        try:
+            global_ounce = gold_ticker.fast_info.last_price
+        except:
+            try:
+                history = gold_ticker.history(period="1d")
+                global_ounce = history['Close'].iloc[-1]
+            except:
+                global_ounce = 2715.0 # قيمة طوارئ
+
+        if global_ounce is None: global_ounce = 2715.0
+
+        print(f"🟡 أونصة الذهب: ${global_ounce:.2f}")
         
         gram_24_usd = global_ounce / 31.1035
         
@@ -107,29 +136,49 @@ def calculate_gold_updates(sanaa_usd, aden_usd):
             "aden": get_prices(aden_usd)
         }
     except Exception as e:
-        print(f"❌ خطأ حسابي في الذهب: {e}")
+        print(f"⚠️ خطأ الذهب: {e}")
         return None
 
-# ==========================================
-# 4. التشغيل الرئيسي
-# ==========================================
+# دالة الإشعار للمدير
 def send_admin_alert(city, old, new):
-    msg = f"🚨 قفزة في {city}: {old} -> {new}"
-    try: requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
+    try: 
+        msg = f"🚨 قفزة في {city}: {old} -> {new}"
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
     except: pass
 
+# ==========================================
+# 4. التشغيل الرئيسي (مع حماية NoneType)
+# ==========================================
 try:
     ref = db.reference('/')
     old_data = ref.child('rates').get()
     
-    old_sanaa = old_data.get('sanaa', {}).get('usd_buy', 535) if old_data else 535
-    old_aden = old_data.get('aden', {}).get('usd_buy', 1630) if old_data else 1630
-
-    market = get_market_rates()
-    new_sanaa = market['sanaa']['usd']
-    new_aden = market['aden']['usd']
+    # قيم احتياطية قديمة
+    old_sanaa = 535
+    old_aden = 1630
     
-    # Safety Check
+    if old_data and isinstance(old_data, dict):
+        old_sanaa = old_data.get('sanaa', {}).get('usd_buy', 535)
+        old_aden = old_data.get('aden', {}).get('usd_buy', 1630)
+
+    # 1. جلب البيانات (الآن مضمونة أنها ليست None)
+    market_data = get_market_rates()
+    
+    # 2. التحقق الإضافي (زيادة أمان)
+    if not market_data or 'sanaa' not in market_data or 'aden' not in market_data:
+        print("❌ فشل السحب تماماً، استخدام بيانات الطوارئ.")
+        # استخدام القيم القديمة كأنها جديدة لمنع الانهيار
+        new_sanaa = old_sanaa
+        new_aden = old_aden
+        sar_sanaa = old_data.get('sanaa', {}).get('sar_buy', 140)
+        sar_aden = old_data.get('aden', {}).get('sar_buy', 430)
+    else:
+        new_sanaa = market_data['sanaa']['usd']
+        new_aden = market_data['aden']['usd']
+        sar_sanaa = market_data['sanaa']['sar']
+        sar_aden = market_data['aden']['sar']
+    
+    # 3. فحص الأمان
     upd_sanaa = True; upd_aden = True
     if abs(new_sanaa - old_sanaa) > SAFETY_THRESHOLD: send_admin_alert('sanaa', old_sanaa, new_sanaa); upd_sanaa = False; new_sanaa = old_sanaa
     if abs(new_aden - old_aden) > SAFETY_THRESHOLD: send_admin_alert('aden', old_aden, new_aden); upd_aden = False; new_aden = old_aden
@@ -142,6 +191,7 @@ try:
     trend_sanaa = get_trend(new_sanaa, old_sanaa)
     trend_aden = get_trend(new_aden, old_aden)
 
+    # 4. حساب الذهب والوقت
     gold_data = calculate_gold_updates(new_sanaa, new_aden)
     time_now = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %I:%M %p")
 
@@ -155,21 +205,21 @@ try:
             
             "rates/sanaa/usd_buy": new_sanaa,
             "rates/sanaa/usd_sell": new_sanaa + 4,
-            "rates/sanaa/sar_buy": market['sanaa']['sar'] if upd_sanaa else old_sar_sanaa,
-            "rates/sanaa/sar_sell": (market['sanaa']['sar'] + 2) if upd_sanaa else old_sar_sanaa + 2,
+            "rates/sanaa/sar_buy": sar_sanaa if upd_sanaa else old_sar_sanaa,
+            "rates/sanaa/sar_sell": (sar_sanaa + 2) if upd_sanaa else old_sar_sanaa + 2,
             "rates/sanaa/trend": trend_sanaa,
 
             "rates/aden/usd_buy": new_aden,
             "rates/aden/usd_sell": new_aden + 15,
-            "rates/aden/sar_buy": market['aden']['sar'] if upd_aden else old_sar_aden,
-            "rates/aden/sar_sell": (market['aden']['sar'] + 5) if upd_aden else old_sar_aden + 5,
+            "rates/aden/sar_buy": sar_aden if upd_aden else old_sar_aden,
+            "rates/aden/sar_sell": (sar_aden + 5) if upd_aden else old_sar_aden + 5,
             "rates/aden/trend": trend_aden,
         }
 
         ref.update(updates)
-        print(f"✅ Updated: Sanaa={new_sanaa} | Aden={new_aden}")
+        print(f"✅ Updated Successfully: Sanaa={new_sanaa} | Aden={new_aden}")
 
-        # Notifications
+        # الإشعارات
         if (upd_sanaa and trend_sanaa != 0) or (upd_aden and trend_aden != 0):
             arrow = "🔺" if (new_aden > old_aden) else "🔻"
             msg = messaging.Message(notification=messaging.Notification(title=f"{arrow} تحديث أسعار الصرف", body=f"صنعاء: {new_sanaa} | عدن: {new_aden}"), topic='rates')
@@ -177,4 +227,6 @@ try:
             except: pass
 
 except Exception as e:
+    import traceback
     print(f"❌ Error: {e}")
+    print(traceback.format_exc()) # طباعة تفاصيل الخطأ
