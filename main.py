@@ -32,10 +32,11 @@ try:
         firebase_admin.initialize_app(cred, {'databaseURL': DATABASE_URL})
 except Exception as e:
     print(f"❌ Error Init: {e}")
+    print("⚠️ هل نسيت وضع ملف service-account.json في نفس المجلد؟")
     exit(1)
 
 # ==========================================
-# 2. دوال السحب والتنظيف
+# 2. دوال السحب
 # ==========================================
 def calculate_median(lst):
     n = len(lst)
@@ -74,7 +75,7 @@ def get_market_rates():
             text = BeautifulSoup(response.content, 'html.parser').get_text()
             nums = [int(n) for n in re.findall(r'\d{3,4}', text)]
             
-            ac = [n for n in nums if 1600 <= n <= 2200]
+            ac = [n for n in nums if 1600 <= n <= 2200 and n not in forbidden_numbers]
             sc = [n for n in nums if 520 <= n <= 600]
 
             if ac: collected_aden.append(max(set(ac), key=ac.count))
@@ -91,14 +92,29 @@ def get_market_rates():
 
 def calculate_gold_updates(sanaa_usd, aden_usd):
     try:
-        gold_ticker = yf.Ticker("GC=F")
-        global_ounce = gold_ticker.history(period="1d")['Close'].iloc[-1]
+        # 👇 التعديل هنا: استخدام رمز الذهب العالمي المباشر بدلاً من العقود
+        gold_ticker = yf.Ticker("XAUUSD=X") 
+        
+        # محاولة جلب السعر بطريقة آمنة
+        history = gold_ticker.history(period="1d")
+        if history.empty:
+            print("⚠️ لم نتمكن من جلب سعر الذهب من المصدر الأول.")
+            # قيمة احتياطية تقريبية للأونصة (في حال الفشل التام)
+            global_ounce = 2650.0 
+        else:
+            global_ounce = history['Close'].iloc[-1]
+
+        print(f"🟡 سعر الأونصة العالمي: {global_ounce}")
+        
         gram_24_usd = global_ounce / 31.1035
         def get_prices(usd_rate):
             gram_24 = int(gram_24_usd * usd_rate)
             return {"gram_24": int(gram_24/100)*100, "gram_21": int(gram_24*0.875/100)*100, "gunaih": int(gram_24*0.875*8/100)*100}
+            
         return {"global_ounce_usd": round(global_ounce, 2), "sanaa": get_prices(sanaa_usd), "aden": get_prices(aden_usd)}
-    except: return None
+    except Exception as e: 
+        print(f"❌ خطأ في حساب الذهب: {e}")
+        return None
 
 def send_admin_alert(city, old, new):
     msg = f"🚨 قفزة سعرية في {city}!\nقديم: {old} | جديد: {new}\nراجع الأمر يدوياً."
@@ -106,26 +122,29 @@ def send_admin_alert(city, old, new):
     except: pass
 
 # ==========================================
-# 4. التشغيل الذكي (مع حساب المؤشر Trend) 📈
+# 4. التشغيل
 # ==========================================
 try:
     ref = db.reference('/')
     old_data = ref.child('rates').get()
     
-    old_sanaa = old_data.get('sanaa', {}).get('usd_buy', 535) if old_data else 535
-    old_aden = old_data.get('aden', {}).get('usd_buy', 1630) if old_data else 1630
+    # التأكد من وجود بيانات قديمة لتفادي الأخطاء
+    if not old_data:
+        print("⚠️ لا توجد بيانات سابقة، سيتم إنشاء هيكل جديد.")
+        old_sanaa = 535
+        old_aden = 1630
+    else:
+        old_sanaa = old_data.get('sanaa', {}).get('usd_buy', 535)
+        old_aden = old_data.get('aden', {}).get('usd_buy', 1630)
 
     market = get_market_rates()
     new_sanaa = market['sanaa']['usd']
     new_aden = market['aden']['usd']
     
-    # فحص الأمان
     upd_sanaa = True; upd_aden = True
     if abs(new_sanaa - old_sanaa) > SAFETY_THRESHOLD: send_admin_alert('sanaa', old_sanaa, new_sanaa); upd_sanaa = False; new_sanaa = old_sanaa
     if abs(new_aden - old_aden) > SAFETY_THRESHOLD: send_admin_alert('aden', old_aden, new_aden); upd_aden = False; new_aden = old_aden
 
-    # --- 🧠 حساب المؤشر (Trend Calculation) ---
-    # 1 = صعود (ارتفاع السعر) | -1 = هبوط (انخفاض السعر) | 0 = استقرار
     def get_trend(new_p, old_p):
         if new_p > old_p: return 1
         if new_p < old_p: return -1
@@ -138,34 +157,29 @@ try:
     time_now = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %I:%M %p")
 
     if gold_data:
+        # نتأكد من القيم السابقة للسعودي في حال عدم التحديث
+        old_sar_sanaa = old_data.get('sanaa', {}).get('sar_buy', 140) if old_data else 140
+        old_sar_aden = old_data.get('aden', {}).get('sar_buy', 430) if old_data else 430
+
         updates = {
             "rates/last_update": time_now,
             "gold": gold_data,
             
-            # تحديث صنعاء مع المؤشر
             "rates/sanaa/usd_buy": new_sanaa,
             "rates/sanaa/usd_sell": new_sanaa + 4,
-            "rates/sanaa/sar_buy": market['sanaa']['sar'] if upd_sanaa else old_data['sanaa']['sar_buy'],
-            "rates/sanaa/sar_sell": (market['sanaa']['sar'] + 2) if upd_sanaa else old_data['sanaa']['sar_sell'],
-            "rates/sanaa/trend": trend_sanaa, # 👈 الحقل الجديد
+            "rates/sanaa/sar_buy": market['sanaa']['sar'] if upd_sanaa else old_sar_sanaa,
+            "rates/sanaa/sar_sell": (market['sanaa']['sar'] + 2) if upd_sanaa else old_sar_sanaa + 2,
+            "rates/sanaa/trend": trend_sanaa,
 
-            # تحديث عدن مع المؤشر
             "rates/aden/usd_buy": new_aden,
             "rates/aden/usd_sell": new_aden + 15,
-            "rates/aden/sar_buy": market['aden']['sar'] if upd_aden else old_data['aden']['sar_buy'],
-            "rates/aden/sar_sell": (market['aden']['sar'] + 5) if upd_aden else old_data['aden']['sar_sell'],
-            "rates/aden/trend": trend_aden, # 👈 الحقل الجديد
+            "rates/aden/sar_buy": market['aden']['sar'] if upd_aden else old_sar_aden,
+            "rates/aden/sar_sell": (market['aden']['sar'] + 5) if upd_aden else old_sar_aden + 5,
+            "rates/aden/trend": trend_aden,
         }
 
         ref.update(updates)
         print(f"✅ Updated: Sanaa={new_sanaa}({trend_sanaa}) | Aden={new_aden}({trend_aden})")
-
-        # الإشعارات
-        if (upd_sanaa and trend_sanaa != 0) or (upd_aden and trend_aden != 0):
-            arrow = "🔺" if (new_aden > old_aden) else "🔻"
-            msg = messaging.Message(notification=messaging.Notification(title=f"{arrow} تحديث أسعار الصرف", body=f"صنعاء: {new_sanaa} | عدن: {new_aden}"), topic='rates')
-            try: messaging.send(msg)
-            except: pass
 
 except Exception as e:
     print(f"❌ Error: {e}")
