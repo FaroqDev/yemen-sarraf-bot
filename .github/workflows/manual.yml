@@ -25,6 +25,12 @@ on:
         description: 'سعر البيع'
         required: true
         type: string
+      # 👇 الخيار الجديد المضاف
+      send_notification:
+        description: 'إرسال إشعار للمستخدمين؟'
+        required: true
+        type: boolean
+        default: true  # الافتراضي نعم
 
 jobs:
   update-price:
@@ -42,5 +48,5 @@ jobs:
         run: echo '${{ secrets.FIREBASE_JSON_KEY }}' > service-account.json
 
       - name: Run Update Script
-        # تمرير المدخلات من واجهة GitHub إلى بايثون
-        run: python manual_update.py ${{ inputs.city }} ${{ inputs.currency }} ${{ inputs.buy_price }} ${{ inputs.sell_price }}
+        # نمرر قيمة الإشعار (true/false) كمعامل خامس
+        run: python manual_update.py ${{ inputs.city }} ${{ inputs.currency }} ${{ inputs.buy_price }} ${{ inputs.sell_price }} ${{ inputs.send_notification }}

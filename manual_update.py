@@ -27,14 +27,17 @@ def calculate_gold(usd_buy_rate):
     except: return None
 
 # --- قراءة المدخلات من GitHub ---
-# الترتيب: [اسم الملف, المدينة, العملة, الشراء, البيع]
 try:
     city = sys.argv[1]
     currency = sys.argv[2]
     buy_price = float(sys.argv[3])
     sell_price = float(sys.argv[4])
     
+    # 👇 قراءة خيار الإشعار (يصل كنص "true" أو "false")
+    should_notify = sys.argv[5].lower() == 'true'
+    
     print(f"🔄 جاري التحديث اليدوي: {city} - {currency} - {buy_price}")
+    print(f"🔔 حالة الإشعار: {'مفعل ✅' if should_notify else 'معطل 🔕'}")
 
     ref = db.reference('/')
     yemen_time = datetime.utcnow() + timedelta(hours=3)
@@ -59,20 +62,23 @@ try:
     ref.update(updates)
     print("✅ تم تحديث قاعدة البيانات!")
 
-    # إرسال إشعار
-    flag = "🇺🇸" if currency == 'usd' else "🇸🇦"
-    curr_name = "دولار" if currency == 'usd' else "سعودي"
-    city_name = "صنعاء" if city == 'sanaa' else "عدن"
-    
-    msg = messaging.Message(
-        notification=messaging.Notification(
-            title=f"تحديث يدوي {city_name} {flag}",
-            body=f"{curr_name}: شراء {buy_price} | بيع {sell_price}"
-        ),
-        topic='rates',
-    )
-    messaging.send(msg)
-    print("🔔 تم إرسال الإشعار.")
+    # --- منطق الإشعار المشروط ---
+    if should_notify:
+        flag = "🇺🇸" if currency == 'usd' else "🇸🇦"
+        curr_name = "دولار" if currency == 'usd' else "سعودي"
+        city_name = "صنعاء" if city == 'sanaa' else "عدن"
+        
+        msg = messaging.Message(
+            notification=messaging.Notification(
+                title=f"تحديث يدوي {city_name} {flag}",
+                body=f"{curr_name}: شراء {buy_price} | بيع {sell_price}"
+            ),
+            topic='rates',
+        )
+        messaging.send(msg)
+        print("🚀 تم إرسال الإشعار للمستخدمين.")
+    else:
+        print("🔕 تم تخطي الإشعار بناءً على طلبك.")
 
 except Exception as e:
     print(f"❌ Error: {e}")
