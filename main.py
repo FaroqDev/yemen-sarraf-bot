@@ -91,7 +91,8 @@ def parse_rates_from_html(html, url_source):
 
     # طباعة تقرير عن هذا الموقع
     if found_log:
-        print(f"   🔹 المصدر: {url}")
+        # 👇 هنا كان الخطأ، قمنا بتصحيحه لاستخدام url_source
+        print(f"   🔹 المصدر: {url_source}")
         print(f"      وجدنا: {', '.join(found_log)}")
     
     return page_data
@@ -125,7 +126,6 @@ async def scrape_market_data():
     # ربط النتائج بالمصادر للطباعة
     for url, html in zip(sources, results):
         if not html: 
-            # print(f"   ❌ فشل الاتصال: {url}") # اختياري: طباعة المواقع التي فشلت
             continue
             
         extracted = parse_rates_from_html(html, url)
