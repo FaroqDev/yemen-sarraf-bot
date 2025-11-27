@@ -68,19 +68,22 @@ try:
         f"rates/{city}/sar_buy": sar_buy,
         f"rates/{city}/sar_sell": sar_sell,
         f"rates/{city}/trend": trend,
-        "rates/last_update": formatted_time
+        
+        "rates/last_update": formatted_time,       # العام
+        f"rates/{city}/last_update": formatted_time # 👈 الخاص بالمدينة
     }
 
     # 5. تحديث الذهب (يعتمد على الدولار الجديد)
     gold_data = calculate_gold(usd_buy)
     if gold_data:
-        updates[f"gold/{city}"] = {
-            "gram_24": gold_data['gram_24'],
-            "gram_21": gold_data['gram_21'],
-            "gunaih": gold_data['gunaih']
-        }
+        updates[f"gold/{city}/gram_24"] = gold_data['gram_24']
+        updates[f"gold/{city}/gram_21"] = gold_data['gram_21']
+        updates[f"gold/{city}/gunaih"] = gold_data['gunaih']
+        updates[f"gold/{city}/last_update"] = formatted_time # 👈 الخاص بذهب المدينة
+        
         updates["gold/global_ounce_usd"] = gold_data['global_ounce']
 
+    
     # التنفيذ
     ref.update(updates)
     print(f"✅ تم التحديث الشامل بنجاح! (Trend: {trend})")
