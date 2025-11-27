@@ -8,6 +8,10 @@ import re
 import statistics
 from datetime import datetime, timedelta
 import os
+import sys
+
+# ضبط الترميز لويندوز (لحل مشكلة الإيموجي)
+sys.stdout.reconfigure(encoding='utf-8')
 
 # ==========================================
 # 1. إعدادات الاتصال
@@ -29,7 +33,7 @@ except Exception as e:
     exit(1)
 
 # ==========================================
-# 2. محرك السحب والتحليل (مع تفاصيل اللوج)
+# 2. محرك السحب والتحليل (Async Currencies)
 # ==========================================
 
 async def fetch_url(session, url):
@@ -41,7 +45,6 @@ async def fetch_url(session, url):
     return ""
 
 def parse_rates_from_html(html, url_source):
-    """تحليل الصفحة واستخراج الأرقام مع طباعة التفاصيل"""
     soup = BeautifulSoup(html, 'html.parser')
     text = soup.get_text()
     
@@ -50,19 +53,16 @@ def parse_rates_from_html(html, url_source):
         'aden': {'usd': [], 'sar': []}
     }
 
-    # البحث في العناصر المحتملة
     rows = soup.find_all(['tr', 'div', 'p', 'span']) 
-    
-    found_log = [] # لتخزين ما وجدناه في هذا الموقع
+    found_log = [] 
 
     for row in rows:
         row_text = row.get_text().strip()
         nums = [int(n) for n in re.findall(r'\d{3,4}', row_text)]
-        nums = [n for n in nums if n not in list(range(2010, 2031))] # فلترة التواريخ
+        nums = [n for n in nums if n not in list(range(2010, 2031))]
         
         if len(nums) < 1: continue
 
-        # تحديد العملة
         currency = None
         if any(x in row_text for x in ['دولار', 'USD', 'أمريكي']): currency = 'usd'
         elif any(x in row_text for x in ['سعودي', 'SAR']): currency = 'sar'
@@ -73,7 +73,6 @@ def parse_rates_from_html(html, url_source):
         buy = nums[0]
         sell = nums[1] if len(nums) >= 2 else 0
 
-        # تصنيف المنطقة
         region = None
         if currency == 'usd':
             if 520 <= buy <= 600: region = 'sanaa'
@@ -83,15 +82,11 @@ def parse_rates_from_html(html, url_source):
             elif 400 <= buy <= 580: region = 'aden'
 
         if region:
-            # إضافة للقائمة
             page_data[region][currency].append({'buy': buy, 'sell': sell})
-            # إضافة للوج (للعرض فقط)
             log_str = f"{region.upper()} {currency.upper()}: {buy}/{sell}"
             if log_str not in found_log: found_log.append(log_str)
 
-    # طباعة تقرير عن هذا الموقع
     if found_log:
-        # 👇 هنا كان الخطأ، قمنا بتصحيحه لاستخدام url_source
         print(f"   🔹 المصدر: {url_source}")
         print(f"      وجدنا: {', '.join(found_log)}")
     
@@ -123,11 +118,8 @@ async def scrape_market_data():
         tasks = [fetch_url(session, url) for url in sources]
         results = await asyncio.gather(*tasks)
 
-    # ربط النتائج بالمصادر للطباعة
     for url, html in zip(sources, results):
-        if not html: 
-            continue
-            
+        if not html: continue
         extracted = parse_rates_from_html(html, url)
         
         for region in ['sanaa', 'aden']:
@@ -140,57 +132,77 @@ async def scrape_market_data():
     return data_pool
 
 def calculate_final_rate(values_list, label=""):
-    """حساب المتوسط مع طباعة التفاصيل"""
     if not values_list: 
-        print(f"   ⚠️ {label}: لا توجد بيانات مسحوبة.")
+        print(f"   ⚠️ {label}: لا توجد بيانات.")
         return None
     
     values_list.sort()
-    
-    # إذا كانت البيانات قليلة جداً
     if len(values_list) < 3: 
         avg = int(sum(values_list)/len(values_list))
         print(f"   📊 {label}: {values_list} -> المتوسط: {avg}")
         return avg
     
-    # حساب الوسيط واستبعاد الشواذ
     mid = len(values_list)//2
     median = values_list[mid]
-    
     clean = [x for x in values_list if median*0.85 <= x <= median*1.15]
     final_val = int(sum(clean)/len(clean)) if clean else int(median)
     
-    # طباعة تفاصيل الحساب
     print(f"   📊 {label}:")
     print(f"      - الكل: {values_list}")
-    print(f"      - بعد التنظيف: {clean}")
-    print(f"      - النتيجة المعتمدة: {final_val}")
+    print(f"      - النتيجة: {final_val}")
     
     return final_val
 
 # ==========================================
-# 3. محرك الذهب (كما هو)
+# 3. محرك الذهب (Yahoo Finance - GC=F) 🟡
 # ==========================================
 def get_gold_price_live():
+    print("\n🟡 جاري سحب الذهب من Yahoo Finance (GC=F)...")
     try:
-        headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://goldprice.org/'}
-        r = requests.get("https://data-asg.goldprice.org/dbXRates/USD", headers=headers, timeout=5)
-        if r.status_code == 200: return float(r.json()['items'][0]['xauPrice'])
-    except: pass
-    try:
+        # استخدام yfinance مباشرة للحصول على السعر المرتفع (~4189)
         ticker = yf.Ticker("GC=F")
-        return float(ticker.history(period="1d")['Close'].iloc[-1])
-    except: return 2715.0
+        data = ticker.history(period="1d", interval="1m")
+        
+        if not data.empty:
+            price = float(data['Close'].iloc[-1])
+            print(f"✅ تم السحب بنجاح: {price:,.2f} USD")
+            return price
+        else:
+            print("⚠️ لم يتم استلام بيانات من Yahoo.")
+    except Exception as e:
+        print(f"⚠️ خطأ في اتصال Yahoo: {e}")
+
+    # سعر احتياطي (آخر سعر ناجح رأيناه)
+    print("❌ استخدام السعر الاحتياطي.")
+    return 4189.60 
 
 def calculate_gold_updates(sanaa_usd, aden_usd):
     try:
+        # 1. الحصول على السعر العالمي المعتمد
         global_ounce = get_gold_price_live()
+        
+        # 2. حساب الجرامات
+        # الأونصة = 31.1035 جرام
         gram_24_usd = global_ounce / 31.1035
+        
         def get_prices(usd_rate):
             gram_24 = int(gram_24_usd * usd_rate)
-            return {"gram_24": int(gram_24/100)*100, "gram_21": int(gram_24*0.875/100)*100, "gunaih": int(gram_24*0.875*8/100)*100}
-        return {"global_ounce_usd": round(global_ounce, 2), "sanaa": get_prices(sanaa_usd), "aden": get_prices(aden_usd)}
-    except: return None
+            gram_21 = int((gram_24 * 0.875) / 100) * 100
+            gunaih = int((gram_21 * 8) / 100) * 100 
+            return {
+                "gram_24": int(gram_24/100)*100, 
+                "gram_21": gram_21, 
+                "gunaih": gunaih
+            }
+
+        return {
+            "global_ounce_usd": round(global_ounce, 2), 
+            "sanaa": get_prices(sanaa_usd), 
+            "aden": get_prices(aden_usd)
+        }
+    except Exception as e: 
+        print(f"❌ خطأ في حسابات الذهب: {e}")
+        return None
 
 # ==========================================
 # 4. التنفيذ الرئيسي
@@ -201,7 +213,6 @@ try:
     
     print("\n🧮 --- تقرير الحساب النهائي ---")
 
-    # 2. القيم الافتراضية
     SPREAD_SANAA_USD = 3
     SPREAD_SANAA_SAR = 1
     SPREAD_ADEN_USD = 12
@@ -211,17 +222,16 @@ try:
         val = calculate_final_rate(raw_data[region][key], name)
         return val if val else default
 
-    # --- حسابات صنعاء ---
+    # حسابات صنعاء
     new_sanaa_usd_buy = get_rate('sanaa', 'usd_buy', 535, "صنعاء $ شراء")
     new_sanaa_usd_sell = get_rate('sanaa', 'usd_sell', new_sanaa_usd_buy + SPREAD_SANAA_USD, "صنعاء $ بيع")
-    # إذا لم نجد بيع، نستخدم المعادلة
     if not raw_data['sanaa']['usd_sell']: new_sanaa_usd_sell = new_sanaa_usd_buy + SPREAD_SANAA_USD
 
     new_sanaa_sar_buy = get_rate('sanaa', 'sar_buy', int(new_sanaa_usd_buy/3.78), "صنعاء SAR شراء")
     new_sanaa_sar_sell = get_rate('sanaa', 'sar_sell', new_sanaa_sar_buy + SPREAD_SANAA_SAR, "صنعاء SAR بيع")
     if not raw_data['sanaa']['sar_sell']: new_sanaa_sar_sell = new_sanaa_sar_buy + SPREAD_SANAA_SAR
 
-    # --- حسابات عدن ---
+    # حسابات عدن
     new_aden_usd_buy = get_rate('aden', 'usd_buy', 1630, "عدن $ شراء")
     new_aden_usd_sell = get_rate('aden', 'usd_sell', new_aden_usd_buy + SPREAD_ADEN_USD, "عدن $ بيع")
     if not raw_data['aden']['usd_sell']: new_aden_usd_sell = new_aden_usd_buy + SPREAD_ADEN_USD
@@ -230,13 +240,13 @@ try:
     new_aden_sar_sell = get_rate('aden', 'sar_sell', new_aden_sar_buy + SPREAD_ADEN_SAR, "عدن SAR بيع")
     if not raw_data['aden']['sar_sell']: new_aden_sar_sell = new_aden_sar_buy + SPREAD_ADEN_SAR
 
-    # 🛡️ 3. التصحيح التلقائي (Anti-Inversion)
+    # تصحيح معكوس
     if new_sanaa_usd_sell <= new_sanaa_usd_buy: new_sanaa_usd_sell = new_sanaa_usd_buy + SPREAD_SANAA_USD
     if new_sanaa_sar_sell <= new_sanaa_sar_buy: new_sanaa_sar_sell = new_sanaa_sar_buy + SPREAD_SANAA_SAR
     if new_aden_usd_sell <= new_aden_usd_buy: new_aden_usd_sell = new_aden_usd_buy + SPREAD_ADEN_USD
     if new_aden_sar_sell <= new_aden_sar_buy: new_aden_sar_sell = new_aden_sar_buy + SPREAD_ADEN_SAR
 
-    # 4. جلب القديم
+    # جلب القديم للمؤشر
     ref = db.reference('/')
     old_data = ref.child('rates').get()
     old_sanaa = old_data.get('sanaa', {}).get('usd_buy', 535) if old_data else 535
@@ -245,11 +255,13 @@ try:
     trend_sanaa = 1 if new_sanaa_usd_buy > old_sanaa else (-1 if new_sanaa_usd_buy < old_sanaa else 0)
     trend_aden = 1 if new_aden_usd_buy > old_aden else (-1 if new_aden_usd_buy < old_aden else 0)
     
+    # حساب الذهب والوقت
     gold_data = calculate_gold_updates(new_sanaa_usd_buy, new_aden_usd_buy)
     time_now = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %I:%M %p")
 
-    # 5. التحديث
+    # التحديث
     if gold_data:
+        # إضافة التواريخ للذهب
         gold_data['sanaa']['last_update'] = time_now
         gold_data['aden']['last_update'] = time_now
 
@@ -274,6 +286,19 @@ try:
 
         ref.update(updates)
         print(f"\n✅ تم التحديث في Firebase بنجاح!")
+
+        # الإشعارات
+        if abs(new_aden_usd_buy - old_aden) > 2 or abs(new_sanaa_usd_buy - old_sanaa) > 1:
+            arrow = "🔺" if (new_aden_usd_buy > old_aden) else "🔻"
+            msg = messaging.Message(
+                notification=messaging.Notification(
+                    title=f"{arrow} تحديث أسعار الصرف", 
+                    body=f"صنعاء: {new_sanaa_usd_buy} - {new_sanaa_usd_sell}\nعدن: {new_aden_usd_buy} - {new_aden_usd_sell}"
+                ), 
+                topic='rates'
+            )
+            try: messaging.send(msg)
+            except: pass
 
 except Exception as e:
     print(f"❌ Error: {e}")
