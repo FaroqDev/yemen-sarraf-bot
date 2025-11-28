@@ -246,12 +246,18 @@ try:
     if new_aden_usd_sell <= new_aden_usd_buy: new_aden_usd_sell = new_aden_usd_buy + SPREAD_ADEN_USD
     if new_aden_sar_sell <= new_aden_sar_buy: new_aden_sar_sell = new_aden_sar_buy + SPREAD_ADEN_SAR
 
-    # جلب القديم للمؤشر
+    # جلب القديم للمؤشر (عملات + ذهب)
     ref = db.reference('/')
     old_data = ref.child('rates').get()
+    old_gold = ref.child('gold').get() # 👈 جلب بيانات الذهب القديمة
+
     old_sanaa = old_data.get('sanaa', {}).get('usd_buy', 535) if old_data else 535
     old_aden = old_data.get('aden', {}).get('usd_buy', 1630) if old_data else 1630
+    
+    # جلب سعر الأونصة القديم
+    old_ounce = old_gold.get('global_ounce_usd', 4189) if old_gold else 4189
 
+    # حساب مؤشرات العملات
     trend_sanaa = 1 if new_sanaa_usd_buy > old_sanaa else (-1 if new_sanaa_usd_buy < old_sanaa else 0)
     trend_aden = 1 if new_aden_usd_buy > old_aden else (-1 if new_aden_usd_buy < old_aden else 0)
     
@@ -261,9 +267,18 @@ try:
 
     # التحديث
     if gold_data:
-        # إضافة التواريخ للذهب
+        # 👇 حساب مؤشر الذهب (Gold Trend)
+        new_ounce = gold_data['global_ounce_usd']
+        gold_trend = 0
+        if new_ounce > old_ounce: gold_trend = 1
+        elif new_ounce < old_ounce: gold_trend = -1
+        
+        # إضافة التواريخ والمؤشر للذهب
         gold_data['sanaa']['last_update'] = time_now
+        gold_data['sanaa']['trend'] = gold_trend # 👈 مؤشر ذهب صنعاء
+        
         gold_data['aden']['last_update'] = time_now
+        gold_data['aden']['trend'] = gold_trend  # 👈 مؤشر ذهب عدن
 
         updates = {
             "rates/last_update": time_now,
@@ -285,7 +300,29 @@ try:
         }
 
         ref.update(updates)
-        print(f"\n✅ تم التحديث في Firebase بنجاح!")
+        print(f"\n✅ تم التحديث بنجاح! (Gold Trend: {gold_trend})")
+
+        # ==========================================
+        # 🆕 7. حفظ السجل التاريخي (History) 📈
+        # ==========================================
+        # نستخدم التاريخ فقط (بدون الوقت) كمفتاح، لنحفظ سعراً واحداً لكل يوم (سعر الإغلاق)
+        today_date = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
+        
+        history_updates = {
+            # سجل صنعاء
+            f"history/sanaa/usd/{today_date}": new_sanaa_usd_buy,
+            f"history/sanaa/sar/{today_date}": new_sanaa_sar_buy,
+            f"history/sanaa/gold21/{today_date}": gold_data['sanaa']['gram_21'],
+            
+            # سجل عدن
+            f"history/aden/usd/{today_date}": new_aden_usd_buy,
+            f"history/aden/sar/{today_date}": new_aden_sar_buy,
+            f"history/aden/gold21/{today_date}": gold_data['aden']['gram_21'],
+        }
+        
+        # نستخدم update لكي لا نحذف الأيام السابقة
+        ref.update(history_updates)
+        print(f"📈 تم حفظ سجل الأسعار ليوم: {today_date}")
 
         # الإشعارات
         if abs(new_aden_usd_buy - old_aden) > 2 or abs(new_sanaa_usd_buy - old_sanaa) > 1:
@@ -293,7 +330,7 @@ try:
             msg = messaging.Message(
                 notification=messaging.Notification(
                     title=f"{arrow} تحديث أسعار الصرف", 
-                    body=f"صنعاء: {new_sanaa_usd_buy} - {new_sanaa_usd_sell}\nعدن: {new_aden_usd_buy} - {new_aden_usd_sell}"
+                    body=f"صنعاء: {new_sanaa_usd_buy} | عدن: {new_aden_usd_buy}"
                 ), 
                 topic='rates'
             )
