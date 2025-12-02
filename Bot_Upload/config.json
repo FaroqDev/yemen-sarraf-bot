@@ -1,0 +1,43 @@
+{
+    "spreads": {
+        "sanaa_usd": 3,
+        "aden_usd": 12,
+        "sanaa_sar": 1,
+        "aden_sar": 4
+    },
+    "safety_threshold": 5,
+    "price_ranges": {
+        "sanaa_usd": [
+            520,
+            600
+        ],
+        "aden_usd": [
+            1600,
+            2200
+        ],
+        "sanaa_sar": [
+            138,
+            160
+        ],
+        "aden_sar": [
+            400,
+            580
+        ]
+    },
+    "sources": [
+        "https://boqash.com/price-currency/",
+        "https://economiyemen.net/",
+        "https://ydn.news",
+        "https://yemen-exchange.com/",
+        "https://www.2dec.net/rate.html",
+        "https://khobaraa.net/section/20",
+        "https://www.aden-tm.net/news/351778",
+        "http://yemenief.org/Currency.aspx",
+        "https://yemen-press.net"
+    ],
+    "gold_settings": {
+        "ounce_to_gram": 31.1035,
+        "gold_21_ratio": 0.875,
+        "gunaih_grams": 8
+    }
+}
