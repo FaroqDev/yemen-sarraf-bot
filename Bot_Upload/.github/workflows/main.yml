@@ -1,0 +1,40 @@
+name: Update Yemen Rates
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # تشغيل كل 30 دقيقة
+  workflow_dispatch:      # زر تشغيل يدوي
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install libraries
+        run: |
+          pip install -r requirements.txt
+
+      - name: Create Key File
+        # استخراج المفتاح السري من إعدادات GitHub
+        run: |
+          echo '${{ secrets.FIREBASE_JSON_KEY }}' > service-account.json
+
+      - name: Create .env file
+        # إنشاء ملف .env من GitHub Secrets
+        run: |
+          cd ..
+          echo "FIREBASE_DATABASE_URL=${{ secrets.FIREBASE_DATABASE_URL }}" > .env
+          echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
+          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
+          echo "SAFETY_THRESHOLD=50" >> .env
+
+      - name: Run Script
+        run: python main.py

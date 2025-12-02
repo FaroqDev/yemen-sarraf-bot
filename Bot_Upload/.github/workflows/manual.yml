@@ -1,0 +1,61 @@
+name: 🛠️ Full City Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: 'المدينة'
+        required: true
+        type: choice
+        options:
+        - sanaa
+        - aden
+      usd_buy:
+        description: '🇺🇸 دولار (شراء)'
+        required: true
+        type: string
+      usd_sell:
+        description: '🇺🇸 دولار (بيع)'
+        required: true
+        type: string
+      sar_buy:
+        description: '🇸🇦 سعودي (شراء)'
+        required: true
+        type: string
+      sar_sell:
+        description: '🇸🇦 سعودي (بيع)'
+        required: true
+        type: string
+      send_notification:
+        description: 'إرسال إشعار؟'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  update-price:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install Libs
+        run: pip install firebase-admin yfinance
+
+      - name: Create Key
+        run: echo '${{ secrets.FIREBASE_JSON_KEY }}' > service-account.json
+
+      - name: Create .env file
+        # إنشاء ملف .env من GitHub Secrets
+        run: |
+          cd ..
+          echo "FIREBASE_DATABASE_URL=${{ secrets.FIREBASE_DATABASE_URL }}" > .env
+          echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
+          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
+          echo "SAFETY_THRESHOLD=50" >> .env
+
+      - name: Run Update Script
+        # نمرر الـ 6 متغيرات الجديدة
+        run: python manual_update.py ${{ inputs.city }} ${{ inputs.usd_buy }} ${{ inputs.usd_sell }} ${{ inputs.sar_buy }} ${{ inputs.sar_sell }} ${{ inputs.send_notification }}
